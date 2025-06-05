@@ -49,28 +49,28 @@ def create_xml(data):
         id_zrodla = str(uuid.uuid4()).upper()
         platnosc_id = str(uuid.uuid4()).upper()
         
-        # Podstawowe pola z konwersją dat
-        numer_faktury = data.get('A', 'BRAK')
-        data_wystawienia = convert_excel_date(data.get('B', '2025-01-01'))
-        data_zakupu = convert_excel_date(data.get('C', data_wystawienia))
-        data_wplywu = convert_excel_date(data.get('D', data_wystawienia))
-        termin_platnosci = convert_excel_date(data.get('E', '2025-01-01'))
+        # Podstawowe pola z konwersją dat - MAPOWANIE INDEKSÓW
+        numer_faktury = data.get('0', data.get('A', 'BRAK'))  # Kolumna A
+        data_wystawienia = convert_excel_date(data.get('1', data.get('B', '2025-01-01')))  # Kolumna B
+        data_zakupu = convert_excel_date(data.get('2', data.get('C', data_wystawienia)))  # Kolumna C
+        data_wplywu = convert_excel_date(data.get('3', data.get('D', data_wystawienia)))  # Kolumna D
+        termin_platnosci = convert_excel_date(data.get('4', data.get('E', '2025-01-01')))  # Kolumna E
         
         # Dane sprzedawcy - z escapowaniem znaków XML
-        nazwa_sprzedawcy = escape_xml(data.get('G', 'BRAK'))
-        nip_sprzedawcy = data.get('F', '0000000000')
-        ulica = escape_xml(data.get('H', ''))
-        miasto = escape_xml(data.get('I', ''))
-        kod_pocztowy = data.get('J', '')
-        kraj = escape_xml(data.get('K', 'Polska'))
+        nip_sprzedawcy = data.get('5', data.get('F', '0000000000'))  # Kolumna F
+        nazwa_sprzedawcy = escape_xml(data.get('6', data.get('G', 'BRAK')))  # Kolumna G
+        ulica = escape_xml(data.get('7', data.get('H', '')))  # Kolumna H
+        kod_pocztowy = data.get('10', data.get('J', ''))  # Kolumna J (uwaga: 8=I, 9=?, 10=J)
+        miasto = escape_xml(data.get('9', data.get('I', '')))  # Kolumna I
+        kraj = escape_xml(data.get('11', data.get('K', 'Polska')))  # Kolumna K
         
         # Kwoty
-        stawka_vat = float(data.get('L', 23))
-        netto = float(data.get('M', 0))
-        vat = float(data.get('N', 0))
-        brutto = float(data.get('O', netto + vat))
-        waluta = data.get('P', 'PLN')
-        forma_platnosci = escape_xml(data.get('Q', ''))
+        stawka_vat = float(data.get('12', data.get('L', 23)))  # Kolumna L
+        netto = float(data.get('13', data.get('M', 0)))  # Kolumna M
+        vat = float(data.get('14', data.get('N', 0)))  # Kolumna N
+        brutto = float(data.get('15', data.get('O', netto + vat)))  # Kolumna O
+        waluta = data.get('16', data.get('P', 'PLN'))  # Kolumna P
+        forma_platnosci = escape_xml(data.get('17', data.get('Q', '')))  # Kolumna Q
         
         # Identyfikator księgowy - escapowanie
         numer_clean = escape_xml(numer_faktury).replace('/', '_')
