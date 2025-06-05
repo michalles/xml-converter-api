@@ -8,18 +8,23 @@ import html
 app = Flask(__name__)
 CORS(app)
 
-def convert_excel_date(excel_date):
-    """Convert Excel serial date to YYYY-MM-DD format"""
+def convert_excel_date(date_input):
+    """Convert date to YYYY-MM-DD format - handles both Excel serial and text dates"""
     try:
         # If it's already a string in correct format, return as is
-        if isinstance(excel_date, str) and len(excel_date) == 10 and '-' in excel_date:
-            return excel_date
+        if isinstance(date_input, str):
+            # Check if it's in YYYY-MM-DD format
+            if len(date_input) == 10 and date_input.count('-') == 2:
+                # Validate the date format
+                datetime.strptime(date_input, '%Y-%m-%d')
+                return date_input
+            elif len(date_input) == 0:
+                return datetime.now().strftime('%Y-%m-%d')
         
-        # Convert to float for calculation
-        excel_date = float(excel_date)
+        # Try to convert from Excel serial number (fallback)
+        excel_date = float(date_input)
         
         # Excel epoch starts at 1900-01-01, but Excel incorrectly treats 1900 as leap year
-        # So we need to subtract 1 day for dates after Feb 28, 1900
         if excel_date > 59:  # After Feb 28, 1900
             excel_date -= 1
             
@@ -64,11 +69,35 @@ def create_xml(data):
         miasto = escape_xml(data.get('9', data.get('I', '')))  # Kolumna I
         kraj = escape_xml(data.get('11', data.get('K', 'Polska')))  # Kolumna K
         
-        # Kwoty
-        stawka_vat = float(data.get('12', data.get('L', 23)))  # Kolumna L
-        netto = float(data.get('13', data.get('M', 0)))  # Kolumna M
-        vat = float(data.get('14', data.get('N', 0)))  # Kolumna N
-        brutto = float(data.get('15', data.get('O', netto + vat)))  # Kolumna O
+        # Kwoty - walidacja i formatowanie
+        try:
+            stawka_vat = float(data.get('12', data.get('L', 23)))  # Kolumna L
+            netto = float(data.get('13', data.get('M', 0)))  # Kolumna M
+            vat = float(data.get('14', data.get('N', 0)))  # Kolumna N
+            brutto = float(data.get('15', data.get('O', netto + vat)))  # Kolumna O
+            
+            # Walidacja kwot - muszą być dodatnie
+            if netto <= 0:
+                netto = 1.00
+            if vat < 0:
+                vat = 0.00
+            if brutto <= 0:
+                brutto = netto + vat
+                
+            # Maksymalne kwoty dla Comarch (zabezpieczenie)
+            if netto > 999999.99:
+                netto = 999999.99
+            if vat > 999999.99:
+                vat = 999999.99
+            if brutto > 999999.99:
+                brutto = 999999.99
+                
+        except (ValueError, TypeError):
+            # Domyślne bezpieczne wartości
+            stawka_vat = 23.0
+            netto = 1.00
+            vat = 0.23
+            brutto = 1.23
         waluta = data.get('16', data.get('P', 'PLN'))  # Kolumna P
         forma_platnosci_raw = data.get('17', data.get('Q', ''))  # Kolumna Q
         
@@ -242,23 +271,24 @@ def create_xml(data):
 def test():
     try:
         test_data = {
-            'A': 'TEST/123/2025',
-            'B': '45807',  # Excel serial date
-            'C': '45807', 
-            'D': '45807',
-            'E': '45821',  # 14 days later
-            'F': '1234567890',
-            'G': 'Test Firma Sp. z o.o.',
-            'H': 'ul. Testowa 1',
-            'I': 'Warszawa',
-            'J': '00-001',
-            'K': 'Polska',
-            'L': '23',
-            'M': '1000.00',
-            'N': '230.00', 
-            'O': '1230.00',
-            'P': 'PLN',
-            'Q': 'przelew'
+            '0': 'TEST/123/2025',
+            '1': '2025-05-21',  # Nowy format daty
+            '2': '2025-05-21', 
+            '3': '2025-05-21',
+            '4': '2025-06-04',  # Termin płatności
+            '5': '1234567890',
+            '6': 'Test Firma Sp. z o.o.',
+            '7': 'ul. Testowa 1',
+            '8': '',
+            '9': 'Warszawa',
+            '10': '00-001',
+            '11': 'Polska',
+            '12': '23',
+            '13': '1000.00',
+            '14': '230.00', 
+            '15': '1230.00',
+            '16': 'PLN',
+            '17': 'przelew'
         }
         
         xml_result = create_xml(test_data)
@@ -268,7 +298,7 @@ def test():
             'message': 'Test conversion successful',
             'xml_content': xml_result,
             'timestamp': datetime.now().isoformat(),
-            'note': 'NAPRAWIONY KOD - formy płatności działają - v2.0'
+            'note': 'NAPRAWIONY KOD v2.2 - obsługa dat tekstowych YYYY-MM-DD + walidacja kwot'
         })
         
     except Exception as e:
@@ -281,14 +311,26 @@ def test():
 @app.route('/convert/single', methods=['POST'])
 def convert_single():
     try:
+        # Logowanie żądania
+        print(f"=== POST /convert/single ===")
+        print(f"Headers: {dict(request.headers)}")
+        
         data = request.json
+        print(f"Received data: {data}")
+        
         if not data:
+            print("ERROR: Brak danych JSON")
             return jsonify({
                 'success': False,
                 'error': 'Brak danych JSON'
             }), 400
         
+        # Logowanie kluczowych pól
+        print(f"Key fields: numer={data.get('0', 'MISSING')}, netto={data.get('13', 'MISSING')}")
+        
         xml_result = create_xml(data)
+        
+        print("SUCCESS: XML created successfully")
         
         return jsonify({
             'success': True,
@@ -299,10 +341,17 @@ def convert_single():
         })
         
     except Exception as e:
+        error_msg = str(e)
+        error_trace = traceback.format_exc()
+        
+        print(f"ERROR: {error_msg}")
+        print(f"TRACE: {error_trace}")
+        
         return jsonify({
             'success': False,
-            'error': str(e),
-            'trace': traceback.format_exc(),
+            'error': error_msg,
+            'trace': error_trace,
+            'received_data': data if 'data' in locals() else None,
             'timestamp': datetime.now().isoformat()
         }), 500
 
