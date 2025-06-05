@@ -70,7 +70,21 @@ def create_xml(data):
         vat = float(data.get('14', data.get('N', 0)))  # Kolumna N
         brutto = float(data.get('15', data.get('O', netto + vat)))  # Kolumna O
         waluta = data.get('16', data.get('P', 'PLN'))  # Kolumna P
-        forma_platnosci = escape_xml(data.get('17', data.get('Q', '')))  # Kolumna Q
+        forma_platnosci_raw = data.get('17', data.get('Q', ''))  # Kolumna Q
+        
+        # Mapowanie form płatności na te dostępne w Optima
+        forma_mapping = {
+            'przelew': 'przelew',
+            'gotowka': 'gotówka',
+            'gotówka': 'gotówka', 
+            'karta': 'karta',
+            'transfer': 'przelew',
+            'bank': 'przelew',
+            'cash': 'gotówka',
+            '': 'przelew'  # domyślna
+        }
+        
+        forma_platnosci = forma_mapping.get(str(forma_platnosci_raw).lower(), 'przelew')
         
         # Identyfikator księgowy - escapowanie
         numer_clean = escape_xml(numer_faktury).replace('/', '_')
@@ -134,8 +148,8 @@ def create_xml(data):
       <KATEGORIA>402-07-01</KATEGORIA>
       <KATEGORIA_ID>{str(uuid.uuid4()).upper()}</KATEGORIA_ID>
       <OPIS></OPIS>
-      <FORMA_PLATNOSCI></FORMA_PLATNOSCI>
-      <FORMA_PLATNOSCI_ID></FORMA_PLATNOSCI_ID>
+      <FORMA_PLATNOSCI>{forma_platnosci}</FORMA_PLATNOSCI>
+      <FORMA_PLATNOSCI_ID>{str(uuid.uuid4()).upper()}</FORMA_PLATNOSCI_ID>
       <DEKLARACJA_VAT7>{data_wystawienia[:7]}</DEKLARACJA_VAT7>
       <DEKLARACJA_VATUE>Nie</DEKLARACJA_VATUE>
       <WALUTA>{waluta}</WALUTA>
@@ -180,8 +194,8 @@ def create_xml(data):
         <PLATNOSC>
           <ID_ZRODLA_PLAT>{platnosc_id}</ID_ZRODLA_PLAT>
           <TERMIN_PLAT>{termin_platnosci}</TERMIN_PLAT>
-          <FORMA_PLATNOSCI_PLAT></FORMA_PLATNOSCI_PLAT>
-          <FORMA_PLATNOSCI_ID_PLAT></FORMA_PLATNOSCI_ID_PLAT>
+          <FORMA_PLATNOSCI_PLAT>{forma_platnosci}</FORMA_PLATNOSCI_PLAT>
+          <FORMA_PLATNOSCI_ID_PLAT>{str(uuid.uuid4()).upper()}</FORMA_PLATNOSCI_ID_PLAT>
           <KWOTA_PLAT>{brutto:.2f}</KWOTA_PLAT>
           <WALUTA_PLAT>{waluta}</WALUTA_PLAT>
           <KURS_WALUTY_PLAT>NBP</KURS_WALUTY_PLAT>
