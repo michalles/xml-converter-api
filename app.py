@@ -79,12 +79,12 @@ def create_xml_from_data(data):
     
     print(f"📋 Basic info: {nazwa_sprzedawcy}, NIP: {nip_sprzedawcy}")
     
-    # XML Template - uproszczona wersja
+    # XML Template - poprawione identyfikatory
     xml_content = f'''<?xml version='1.0' encoding='utf-8'?>
 <ROOT xmlns="http://www.comarch.pl/cdn/optima/offline">
   <REJESTRY_ZAKUPU_VAT>
     <WERSJA>2.00</WERSJA>
-    <BAZA_ZRD_ID>SPRZ</BAZA_ZRD_ID>
+    <BAZA_ZRD_ID>KSIEG</BAZA_ZRD_ID>
     <BAZA_DOC_ID>KSIEG</BAZA_DOC_ID>
     <REJESTR_ZAKUPU_VAT>
       <ID_ZRODLA>{id_zrodla}</ID_ZRODLA>
