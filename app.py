@@ -1,18 +1,4 @@
-# Walidacja i zabezpieczenie kwot
-        if netto <= 0:
-            netto = 1.00
-        if vat < 0:
-            vat = 0.00
-        if brutto <= 0:
-            brutto = netto + vat
-            
-        # Maksymalne kwoty dla Comarch
-        if netto > 999999.99:
-            netto = 999999.99
-        if vat > 999999.99:
-            vat = 999999.99
-        if brutto > 999999.99:
-            brutto = 999999.99from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 import uuid
 from datetime import datetime, timedelta
@@ -64,6 +50,58 @@ def safe_float(value, default=0.0):
     except (ValueError, TypeError):
         return default
 
+def clean_nip(nip_value):
+    """Clean NIP number - remove 'NIP' prefix and format properly"""
+    if not nip_value:
+        return "0000000000"
+    
+    # Convert to string and clean
+    nip_str = str(nip_value).strip()
+    
+    # Remove 'NIP' prefix (case insensitive)
+    if nip_str.upper().startswith('NIP'):
+        nip_str = nip_str[3:].strip()
+    
+    # Remove all non-digits
+    nip_digits = ''.join(filter(str.isdigit, nip_str))
+    
+    # Ensure 10 digits
+    if len(nip_digits) == 10:
+        return nip_digits
+    elif len(nip_digits) < 10:
+        return nip_digits.ljust(10, '0')
+    else:
+        return nip_digits[:10]
+
+def clean_currency(currency_value):
+    """Clean currency - convert Polish symbols to standard codes"""
+    if not currency_value:
+        return "PLN"
+    
+    currency_str = str(currency_value).strip().upper()
+    
+    # Mapping of Polish currency symbols
+    currency_mapping = {
+        'ZŁ': 'PLN',
+        'ZL': 'PLN',
+        'ZŁOTY': 'PLN',
+        'ZLOTY': 'PLN',
+        'PLN': 'PLN',
+        'EUR': 'EUR',
+        'USD': 'USD'
+    }
+    
+    return currency_mapping.get(currency_str, 'PLN')
+
+def safe_string(value, default=''):
+    """Safely convert value to string with fallback"""
+    try:
+        if value is None:
+            return default
+        return str(value).strip()
+    except:
+        return default
+
 def escape_xml(text):
     """Escape special characters for XML"""
     if not text:
@@ -102,6 +140,22 @@ def create_xml(data):
         brutto = safe_float(data.get('15', netto + vat))
         waluta = clean_currency(data.get('16', 'PLN'))
         forma_platnosci_raw = safe_string(data.get('17', 'przelew'))
+        
+        # Walidacja i zabezpieczenie kwot
+        if netto <= 0:
+            netto = 1.00
+        if vat < 0:
+            vat = 0.00
+        if brutto <= 0:
+            brutto = netto + vat
+            
+        # Maksymalne kwoty dla Comarch
+        if netto > 999999.99:
+            netto = 999999.99
+        if vat > 999999.99:
+            vat = 999999.99
+        if brutto > 999999.99:
+            brutto = 999999.99
         
         # Mapowanie form płatności na te dostępne w Optima
         forma_mapping = {
@@ -372,12 +426,12 @@ def convert_single():
 def home():
     return jsonify({
         'message': 'XML Converter API for Comarch Optima',
-        'version': '2.0',
+        'version': '2.3',
         'endpoints': {
             '/test': 'Test conversion with sample data',
             '/convert/single': 'Convert single row (POST)',
         },
-        'status': 'ACTIVE - NAPRAWIONY KOD v2.0',
+        'status': 'ACTIVE - NAPRAWIONY KOD v2.3 - czyszczenie NIP + waluta + bezpieczne dane',
         'updated': '2025-06-05'
     })
 
