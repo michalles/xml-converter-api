@@ -72,19 +72,19 @@ def create_xml(data):
         waluta = data.get('16', data.get('P', 'PLN'))  # Kolumna P
         forma_platnosci_raw = data.get('17', data.get('Q', ''))  # Kolumna Q
         
-        # Mapowanie form płatności na te dostępne w Optima
-        forma_mapping = {
-            'przelew': 'przelew',
-            'gotowka': 'gotówka',
-            'gotówka': 'gotówka', 
-            'karta': 'karta',
-            'transfer': 'przelew',
-            'bank': 'przelew',
-            'cash': 'gotówka',
-            '': 'przelew'  # domyślna
-        }
-        
-        forma_platnosci = forma_mapping.get(str(forma_platnosci_raw).lower(), 'przelew')
+       # Mapowanie form płatności na te dostępne w Optima
+forma_mapping = {
+    'przelew': 'przelew',
+    'gotowka': 'gotówka',
+    'gotówka': 'gotówka', 
+    'karta': 'karta',
+    'transfer': 'przelew',
+    'bank': 'przelew',
+    'cash': 'gotówka',
+    '': 'przelew'  # domyślna
+}
+
+forma_platnosci = forma_mapping.get(str(forma_platnosci_raw).lower(), 'przelew')
         
         # Identyfikator księgowy - escapowanie
         numer_clean = escape_xml(numer_faktury).replace('/', '_')
