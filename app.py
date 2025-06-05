@@ -254,7 +254,7 @@ def test():
             'message': 'Test conversion successful',
             'xml_content': xml_result,
             'timestamp': datetime.now().isoformat(),
-            'note': 'To jest endpoint testowy - identyfikatory baz: KSIEG/KSIEG'
+            'note': 'Obsługuje indeksy numeryczne (0,1,2) i literowe (A,B,C) - ZAKTUALIZOWANY KOD'
         })
         
     except Exception as e:
