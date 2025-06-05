@@ -1,86 +1,58 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import uuid
-from datetime import datetime, timedelta
-import os
+from datetime import datetime
 import traceback
-import json
+import html
 
 app = Flask(__name__)
 CORS(app)
 
-def create_xml_from_data(data):
-    """Konwertuje dane z Make.com na XML"""
-    
-    print(f"🔍 Processing data: {data}")  # DEBUG
-    
-    # Walidacja wymaganych pól z fallbacks
-    required_fields = {
-        'Numer_Faktury': 'TEST/001/2025',
-        'Data_Wystawienia': '2025-05-30',
-        'NIP_Sprzedawcy': '0000000000',
-        'Nazwa_Sprzedawcy': 'TEST SUPPLIER'
-    }
-    
-    # Sprawdź i uzupełnij brakujące pola
-    for field, default_value in required_fields.items():
-        if field not in data or not data[field]:
-            print(f"⚠️  Missing field {field}, using default: {default_value}")
-            data[field] = default_value
-    
-    # Generowanie UUID
-    id_zrodla = str(uuid.uuid4()).upper()
-    podmiot_id = str(uuid.uuid4()).upper()
-    kategoria_id = str(uuid.uuid4()).upper()
-    forma_platnosci_id = str(uuid.uuid4()).upper()
-    platnosc_id = str(uuid.uuid4()).upper()
-    
-    # Przetwarzanie dat
-    data_wystawienia = data.get('Data_Wystawienia', '2025-05-30')
-    data_zakupu = data.get('Data_Zakupu', data_wystawienia)
-    data_wplywu = data.get('Data_Wplywu', data_wystawienia)
-    
-    # Obliczanie terminu płatności
+def escape_xml(text):
+    """Escape special characters for XML"""
+    if not text:
+        return ""
+    # Convert to string if not already
+    text = str(text)
+    # Escape XML special characters
+    text = html.escape(text, quote=False)
+    return text
+
+def create_xml(data):
     try:
-        date_obj = datetime.strptime(data_wystawienia, '%Y-%m-%d')
-        termin_obj = date_obj + timedelta(days=7)
-        termin = termin_obj.strftime('%Y-%m-%d')
-        deklaracja_vat = date_obj.strftime('%Y-%m')
-    except Exception as e:
-        print(f"⚠️  Date parsing error: {e}")
-        termin = '2025-06-06'
-        deklaracja_vat = '2025-05'
-    
-    # Przetwarzanie kwot
-    try:
-        netto = float(data.get('Netto', 0))
-        vat = float(data.get('VAT', 0))
-        brutto = netto + vat
-        stawka_vat = int(data.get('Stawka_VAT', 23))
-        print(f"💰 Amounts: netto={netto}, vat={vat}, brutto={brutto}")
-    except Exception as e:
-        print(f"⚠️  Amount parsing error: {e}")
-        netto = 1000.0
-        vat = 230.0
-        brutto = 1230.0
-        stawka_vat = 23
-    
-    # Formatowanie numerów
-    numer_faktury = str(data.get('Numer_Faktury', 'BRAK')).replace('/', '_')
-    identyfikator_ksiegowy = f"ZAKUP/{numer_faktury}"
-    
-    # Bezpieczne pobieranie stringów
-    def safe_get(key, default=''):
-        value = data.get(key, default)
-        return str(value) if value is not None else default
-    
-    nazwa_sprzedawcy = safe_get('Nazwa_Sprzedawcy', 'BRAK NAZWY')
-    nip_sprzedawcy = safe_get('NIP_Sprzedawcy', '0000000000')
-    
-    print(f"📋 Basic info: {nazwa_sprzedawcy}, NIP: {nip_sprzedawcy}")
-    
-    # XML Template - poprawione identyfikatory
-    xml_content = f'''<?xml version='1.0' encoding='utf-8'?>
+        # Generate unique IDs
+        id_zrodla = str(uuid.uuid4()).upper()
+        platnosc_id = str(uuid.uuid4()).upper()
+        
+        # Podstawowe pola
+        numer_faktury = data.get('A', 'BRAK')
+        data_wystawienia = data.get('B', '2025-01-01')
+        data_zakupu = data.get('C', data_wystawienia)
+        data_wplywu = data.get('D', data_wystawienia)
+        termin_platnosci = data.get('E', '2025-01-01')
+        
+        # Dane sprzedawcy - z escapowaniem znaków XML
+        nazwa_sprzedawcy = escape_xml(data.get('G', 'BRAK'))
+        nip_sprzedawcy = data.get('F', '0000000000')
+        ulica = escape_xml(data.get('H', ''))
+        miasto = escape_xml(data.get('I', ''))
+        kod_pocztowy = data.get('J', '')
+        kraj = escape_xml(data.get('K', 'Polska'))
+        
+        # Kwoty
+        stawka_vat = float(data.get('L', 23))
+        netto = float(data.get('M', 0))
+        vat = float(data.get('N', 0))
+        brutto = float(data.get('O', netto + vat))
+        waluta = data.get('P', 'PLN')
+        forma_platnosci = escape_xml(data.get('Q', ''))
+        
+        # Identyfikator księgowy - escapowanie
+        numer_clean = escape_xml(numer_faktury).replace('/', '_')
+        identyfikator_ksiegowy = f"ZAKUP/{numer_clean}"
+        
+        # XML Template - POPRAWIONE IDENTYFIKATORY
+        xml_content = f'''<?xml version='1.0' encoding='utf-8'?>
 <ROOT xmlns="http://www.comarch.pl/cdn/optima/offline">
   <REJESTRY_ZAKUPU_VAT>
     <WERSJA>2.00</WERSJA>
@@ -94,10 +66,10 @@ def create_xml_from_data(data):
       <DATA_WYSTAWIENIA>{data_wystawienia}</DATA_WYSTAWIENIA>
       <DATA_ZAKUPU>{data_zakupu}</DATA_ZAKUPU>
       <DATA_WPLYWU>{data_wplywu}</DATA_WPLYWU>
-      <TERMIN>{termin}</TERMIN>
-      <DATA_DATAOBOWIAZKUPODATKOWEGO>{data_wystawienia}</DATA_DATAOBOWIAZKUPODATKOWEGO>
-      <DATA_DATAPRAWAODLICZENIA>{data_wystawienia}</DATA_DATAPRAWAODLICZENIA>
-      <NUMER>{data.get('Numer_Faktury', 'BRAK')}</NUMER>
+      <TERMIN>{termin_platnosci}</TERMIN>
+      <DATA_DATAOBOWIAZKUPODATKOWEGO>{data_zakupu}</DATA_DATAOBOWIAZKUPODATKOWEGO>
+      <DATA_DATAPRAWAODLICZENIA>{data_zakupu}</DATA_DATAPRAWAODLICZENIA>
+      <NUMER><![CDATA[{numer_faktury}]]></NUMER>
       <KOREKTA>Nie</KOREKTA>
       <KOREKTA_NUMER></KOREKTA_NUMER>
       <WEWNETRZNA>Nie</WEWNETRZNA>
@@ -109,48 +81,48 @@ def create_xml_from_data(data):
       <PODATNIK_CZYNNY>Tak</PODATNIK_CZYNNY>
       <IDENTYFIKATOR_KSIEGOWY>{identyfikator_ksiegowy}</IDENTYFIKATOR_KSIEGOWY>
       <TYP_PODMIOTU>kontrahent</TYP_PODMIOTU>
-      <PODMIOT>{nazwa_sprzedawcy}</PODMIOT>
-      <PODMIOT_ID>{podmiot_id}</PODMIOT_ID>
+      <PODMIOT><![CDATA[{nazwa_sprzedawcy}]]></PODMIOT>
+      <PODMIOT_ID>{str(uuid.uuid4()).upper()}</PODMIOT_ID>
       <PODMIOT_NIP>{nip_sprzedawcy}</PODMIOT_NIP>
-      <NAZWA1>{nazwa_sprzedawcy}</NAZWA1>
+      <NAZWA1><![CDATA[{nazwa_sprzedawcy}]]></NAZWA1>
       <NAZWA2></NAZWA2>
       <NAZWA3></NAZWA3>
       <NIP_KRAJ></NIP_KRAJ>
       <NIP>{nip_sprzedawcy}</NIP>
-      <KRAJ>{safe_get('Kraj', 'Polska')}</KRAJ>
-      <WOJEWODZTWO>{safe_get('Wojewodztwo', 'mazowieckie')}</WOJEWODZTWO>
+      <KRAJ>{kraj}</KRAJ>
+      <WOJEWODZTWO>mazowieckie</WOJEWODZTWO>
       <POWIAT></POWIAT>
       <GMINA></GMINA>
-      <ULICA>{safe_get('Ulica', '')}</ULICA>
+      <ULICA><![CDATA[{ulica}]]></ULICA>
       <NR_DOMU></NR_DOMU>
-      <NR_LOKALU>{safe_get('Nr_Lokalu', '')}</NR_LOKALU>
-      <MIASTO>{safe_get('Miasto', '')}</MIASTO>
-      <KOD_POCZTOWY>{safe_get('Kod_Pocztowy', '')}</KOD_POCZTOWY>
-      <POCZTA>{safe_get('Miasto', '')}</POCZTA>
+      <NR_LOKALU></NR_LOKALU>
+      <MIASTO><![CDATA[{miasto}]]></MIASTO>
+      <KOD_POCZTOWY>{kod_pocztowy}</KOD_POCZTOWY>
+      <POCZTA>{miasto}</POCZTA>
       <DODATKOWE></DODATKOWE>
       <PESEL></PESEL>
       <ROLNIK>Nie</ROLNIK>
       <TYP_PLATNIKA>kontrahent</TYP_PLATNIKA>
       <PLATNIK>{nazwa_sprzedawcy}</PLATNIK>
-      <PLATNIK_ID>{podmiot_id}</PLATNIK_ID>
+      <PLATNIK_ID>{str(uuid.uuid4()).upper()}</PLATNIK_ID>
       <PLATNIK_NIP>{nip_sprzedawcy}</PLATNIK_NIP>
-      <KATEGORIA>{safe_get('Kategoria', '402-07-01')}</KATEGORIA>
-      <KATEGORIA_ID>{kategoria_id}</KATEGORIA_ID>
-      <OPIS>{safe_get('Opis_Pozycji', '')}</OPIS>
-      <FORMA_PLATNOSCI>{safe_get('Forma_Platnosci', 'przelew')}</FORMA_PLATNOSCI>
-      <FORMA_PLATNOSCI_ID>{forma_platnosci_id}</FORMA_PLATNOSCI_ID>
-      <DEKLARACJA_VAT7>{deklaracja_vat}</DEKLARACJA_VAT7>
+      <KATEGORIA>402-07-01</KATEGORIA>
+      <KATEGORIA_ID>{str(uuid.uuid4()).upper()}</KATEGORIA_ID>
+      <OPIS></OPIS>
+      <FORMA_PLATNOSCI></FORMA_PLATNOSCI>
+      <FORMA_PLATNOSCI_ID>{str(uuid.uuid4()).upper()}</FORMA_PLATNOSCI_ID>
+      <DEKLARACJA_VAT7>{data_wystawienia[:7]}</DEKLARACJA_VAT7>
       <DEKLARACJA_VATUE>Nie</DEKLARACJA_VATUE>
-      <WALUTA>{safe_get('Waluta', '')}</WALUTA>
+      <WALUTA>{waluta}</WALUTA>
       <KURS_WALUTY>NBP</KURS_WALUTY>
       <NOTOWANIE_WALUTY_ILE>1</NOTOWANIE_WALUTY_ILE>
       <NOTOWANIE_WALUTY_ZA_ILE>1</NOTOWANIE_WALUTY_ZA_ILE>
-      <DATA_KURSU>{data_wystawienia}</DATA_KURSU>
+      <DATA_KURSU>{data_zakupu}</DATA_KURSU>
       <KURS_DO_KSIEGOWANIA>Nie</KURS_DO_KSIEGOWANIA>
       <KURS_WALUTY_2>NBP</KURS_WALUTY_2>
       <NOTOWANIE_WALUTY_ILE_2>1</NOTOWANIE_WALUTY_ILE_2>
       <NOTOWANIE_WALUTY_ZA_ILE_2>1</NOTOWANIE_WALUTY_ZA_ILE_2>
-      <DATA_KURSU_2>{data_wystawienia}</DATA_KURSU_2>
+      <DATA_KURSU_2>{data_zakupu}</DATA_KURSU_2>
       <PLATNOSC_VAT_W_PLN>Nie</PLATNOSC_VAT_W_PLN>
       <AKCYZA_NA_WEGIEL>0</AKCYZA_NA_WEGIEL>
       <AKCYZA_NA_WEGIEL_KOLUMNA_KPR>nie księgować</AKCYZA_NA_WEGIEL_KOLUMNA_KPR>
@@ -161,9 +133,9 @@ def create_xml_from_data(data):
       <POZYCJE>
         <POZYCJA>
           <LP>1</LP>
-          <KATEGORIA_POS>{safe_get('Kategoria', '402-07-01')}</KATEGORIA_POS>
-          <KATEGORIA_ID_POS>{kategoria_id}</KATEGORIA_ID_POS>
-          <STAWKA_VAT>{stawka_vat}</STAWKA_VAT>
+          <KATEGORIA_POS>402-07-01</KATEGORIA_POS>
+          <KATEGORIA_ID_POS>{str(uuid.uuid4()).upper()}</KATEGORIA_ID_POS>
+          <STAWKA_VAT>{int(stawka_vat)}</STAWKA_VAT>
           <STATUS_VAT>opodatkowana</STATUS_VAT>
           <NETTO>{netto:.2f}</NETTO>
           <VAT>{vat:.2f}</VAT>
@@ -171,22 +143,22 @@ def create_xml_from_data(data):
           <VAT_SYS>{vat:.2f}</VAT_SYS>
           <NETTO_SYS2>{netto:.2f}</NETTO_SYS2>
           <VAT_SYS2>{vat:.2f}</VAT_SYS2>
-          <RODZAJ_ZAKUPU>{safe_get('Rodzaj_Zakupu', 'usługi')}</RODZAJ_ZAKUPU>
-          <ODLICZENIA_VAT>{safe_get('Odliczenia_VAT', 'tak')}</ODLICZENIA_VAT>
+          <RODZAJ_ZAKUPU>usługi</RODZAJ_ZAKUPU>
+          <ODLICZENIA_VAT>tak</ODLICZENIA_VAT>
           <KOLUMNA_KPR>Inne</KOLUMNA_KPR>
           <KOLUMNA_RYCZALT>3.00</KOLUMNA_RYCZALT>
-          <OPIS_POZ>{safe_get('Opis_Pozycji', '')}</OPIS_POZ>
+          <OPIS_POZ></OPIS_POZ>
         </POZYCJA>
       </POZYCJE>
       <KWOTY_DODATKOWE></KWOTY_DODATKOWE>
       <PLATNOSCI>
         <PLATNOSC>
           <ID_ZRODLA_PLAT>{platnosc_id}</ID_ZRODLA_PLAT>
-          <TERMIN_PLAT>{termin}</TERMIN_PLAT>
-          <FORMA_PLATNOSCI_PLAT>{safe_get('Forma_Platnosci', 'przelew')}</FORMA_PLATNOSCI_PLAT>
-          <FORMA_PLATNOSCI_ID_PLAT>{forma_platnosci_id}</FORMA_PLATNOSCI_ID_PLAT>
+          <TERMIN_PLAT>{termin_platnosci}</TERMIN_PLAT>
+          <FORMA_PLATNOSCI_PLAT>{forma_platnosci}</FORMA_PLATNOSCI_PLAT>
+          <FORMA_PLATNOSCI_ID_PLAT>{str(uuid.uuid4()).upper()}</FORMA_PLATNOSCI_ID_PLAT>
           <KWOTA_PLAT>{brutto:.2f}</KWOTA_PLAT>
-          <WALUTA_PLAT>{safe_get('Waluta', '')}</WALUTA_PLAT>
+          <WALUTA_PLAT>{waluta}</WALUTA_PLAT>
           <KURS_WALUTY_PLAT>NBP</KURS_WALUTY_PLAT>
           <NOTOWANIE_WALUTY_ILE_PLAT>1</NOTOWANIE_WALUTY_ILE_PLAT>
           <NOTOWANIE_WALUTY_ZA_ILE_PLAT>1</NOTOWANIE_WALUTY_ZA_ILE_PLAT>
@@ -196,15 +168,15 @@ def create_xml_from_data(data):
           <KONTO></KONTO>
           <NIE_NALICZAJ_ODSETEK>Nie</NIE_NALICZAJ_ODSETEK>
           <PRZELEW_SEPA>Nie</PRZELEW_SEPA>
-          <DATA_KURSU_PLAT>{data_wystawienia}</DATA_KURSU_PLAT>
-          <WALUTA_DOK>{safe_get('Waluta', '')}</WALUTA_DOK>
+          <DATA_KURSU_PLAT>{data_zakupu}</DATA_KURSU_PLAT>
+          <WALUTA_DOK>{waluta}</WALUTA_DOK>
           <PLATNOSC_TYP_PODMIOTU>kontrahent</PLATNOSC_TYP_PODMIOTU>
           <PLATNOSC_PODMIOT>{nazwa_sprzedawcy}</PLATNOSC_PODMIOT>
-          <PLATNOSC_PODMIOT_ID>{podmiot_id}</PLATNOSC_PODMIOT_ID>
+          <PLATNOSC_PODMIOT_ID>{str(uuid.uuid4()).upper()}</PLATNOSC_PODMIOT_ID>
           <PLATNOSC_PODMIOT_NIP>{nip_sprzedawcy}</PLATNOSC_PODMIOT_NIP>
-          <PLAT_KATEGORIA>{safe_get('Kategoria', '402-07-01')}</PLAT_KATEGORIA>
-          <PLAT_KATEGORIA_ID>{kategoria_id}</PLAT_KATEGORIA_ID>
-          <PLAT_ELIXIR_O1>Zapłata za {data.get('Numer_Faktury', 'BRAK')}</PLAT_ELIXIR_O1>
+          <PLAT_KATEGORIA>402-07-01</PLAT_KATEGORIA>
+          <PLAT_KATEGORIA_ID>{str(uuid.uuid4()).upper()}</PLAT_KATEGORIA_ID>
+          <PLAT_ELIXIR_O1>Zapłata za {numer_faktury}</PLAT_ELIXIR_O1>
           <PLAT_ELIXIR_O2></PLAT_ELIXIR_O2>
           <PLAT_ELIXIR_O3></PLAT_ELIXIR_O3>
           <PLAT_ELIXIR_O4></PLAT_ELIXIR_O4>
@@ -213,7 +185,7 @@ def create_xml_from_data(data):
           <PLAT_SPLIT_PAYMENT>Nie</PLAT_SPLIT_PAYMENT>
           <PLAT_SPLIT_KWOTA_VAT>{vat:.2f}</PLAT_SPLIT_KWOTA_VAT>
           <PLAT_SPLIT_NIP>{nip_sprzedawcy}</PLAT_SPLIT_NIP>
-          <PLAT_SPLIT_NR_DOKUMENTU>{data.get('Numer_Faktury', 'BRAK')}</PLAT_SPLIT_NR_DOKUMENTU>
+          <PLAT_SPLIT_NR_DOKUMENTU>{numer_faktury}</PLAT_SPLIT_NR_DOKUMENTU>
         </PLATNOSC>
       </PLATNOSCI>
       <KODY_JPK></KODY_JPK>
@@ -221,111 +193,92 @@ def create_xml_from_data(data):
     </REJESTR_ZAKUPU_VAT>
   </REJESTRY_ZAKUPU_VAT>
 </ROOT>'''
-    
-    print(f"✅ XML generated successfully, length: {len(xml_content)}")
-    return xml_content
-
-@app.route('/')
-def health_check():
-    """Sprawdzenie statusu serwera"""
-    return jsonify({
-        'status': 'healthy',
-        'service': 'Google Sheet to XML Converter',
-        'version': '2.0.0',
-        'platform': 'Render.com',
-        'timestamp': datetime.now().isoformat()
-    })
+        
+        return xml_content
+        
+    except Exception as e:
+        raise Exception(f"Błąd tworzenia XML: {str(e)}")
 
 @app.route('/test')
-def test_endpoint():
-    """Test endpoint z przykładowymi danymi"""
+def test():
     try:
         test_data = {
-            'Numer_Faktury': 'TEST/001/2025',
-            'Data_Wystawienia': '2025-05-30',
-            'NIP_Sprzedawcy': '1234567890',
-            'Nazwa_Sprzedawcy': 'Test Company',
-            'Netto': '1000.00',
-            'VAT': '230.00',
-            'Stawka_VAT': '23'
+            'A': 'TEST/123/2025',
+            'B': '2025-06-05',
+            'C': '2025-06-05', 
+            'D': '2025-06-05',
+            'E': '2025-06-19',
+            'F': '1234567890',
+            'G': 'Test Firma Sp. z o.o.',
+            'H': 'ul. Testowa 1',
+            'I': 'Warszawa',
+            'J': '00-001',
+            'K': 'Polska',
+            'L': '23',
+            'M': '1000.00',
+            'N': '230.00', 
+            'O': '1230.00',
+            'P': 'PLN',
+            'Q': 'przelew'
         }
         
-        xml_content = create_xml_from_data(test_data)
+        xml_result = create_xml(test_data)
         
         return jsonify({
             'success': True,
             'message': 'Test conversion successful',
-            'test_data': test_data,
-            'xml_length': len(xml_content),
-            'xml_preview': xml_content[:500] + '...'
+            'xml_content': xml_result,
+            'timestamp': datetime.now().isoformat(),
+            'note': 'To jest endpoint testowy - identyfikatory baz: KSIEG/KSIEG'
         })
         
     except Exception as e:
         return jsonify({
             'success': False,
             'error': str(e),
-            'traceback': traceback.format_exc()
+            'timestamp': datetime.now().isoformat()
         }), 500
 
 @app.route('/convert/single', methods=['POST'])
 def convert_single():
-    """Konwersja pojedynczego wiersza z Make.com"""
     try:
-        print(f"📨 Received request from {request.remote_addr}")
-        print(f"📋 Headers: {dict(request.headers)}")
-        
-        if not request.is_json:
-            print(f"❌ Content-Type not JSON: {request.content_type}")
-            return jsonify({
-                'success': False,
-                'error': f'Request must contain JSON data. Received: {request.content_type}',
-                'content_received': request.get_data(as_text=True)[:200]
-            }), 400
-        
-        try:
-            data = request.get_json()
-            print(f"📊 JSON data received: {data}")
-        except Exception as json_error:
-            print(f"❌ JSON parsing error: {json_error}")
-            return jsonify({
-                'success': False,
-                'error': f'Invalid JSON: {str(json_error)}',
-                'raw_data': request.get_data(as_text=True)[:200]
-            }), 400
-        
+        data = request.json
         if not data:
-            print("❌ Empty data received")
             return jsonify({
                 'success': False,
-                'error': 'No data provided',
-                'received': str(data)
+                'error': 'Brak danych JSON'
             }), 400
         
-        print(f"🔄 Starting XML conversion...")
-        xml_content = create_xml_from_data(data)
-        print(f"✅ Conversion successful")
+        xml_result = create_xml(data)
         
         return jsonify({
             'success': True,
             'message': 'Conversion successful',
-            'xml_content': xml_content,
-            'timestamp': datetime.now().isoformat(),
-            'processed_fields': list(data.keys())
+            'xml_content': xml_result,
+            'processed_fields': list(data.keys()),
+            'timestamp': datetime.now().isoformat()
         })
         
     except Exception as e:
-        error_trace = traceback.format_exc()
-        print(f"❌ Server error: {e}")
-        print(f"📋 Traceback: {error_trace}")
-        
         return jsonify({
             'success': False,
             'error': str(e),
-            'traceback': error_trace,
+            'trace': traceback.format_exc(),
             'timestamp': datetime.now().isoformat()
         }), 500
 
+@app.route('/')
+def home():
+    return jsonify({
+        'message': 'XML Converter API for Comarch Optima',
+        'version': '1.2',
+        'endpoints': {
+            '/test': 'Test conversion with sample data',
+            '/convert/single': 'Convert single row (POST)',
+        },
+        'status': 'ACTIVE - KSIEG identifiers',
+        'updated': '2025-06-05'
+    })
+
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5000))
-    print(f"🚀 Starting server on port {port}")
-    app.run(host='0.0.0.0', port=port, debug=False)
+    app.run(debug=True, host='0.0.0.0', port=5000)
