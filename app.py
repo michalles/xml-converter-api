@@ -60,7 +60,7 @@ def create_xml(data):
         nip_sprzedawcy = data.get('5', data.get('F', '0000000000'))  # Kolumna F
         nazwa_sprzedawcy = escape_xml(data.get('6', data.get('G', 'BRAK')))  # Kolumna G
         ulica = escape_xml(data.get('7', data.get('H', '')))  # Kolumna H
-        kod_pocztowy = data.get('10', data.get('J', ''))  # Kolumna J (uwaga: 8=I, 9=?, 10=J)
+        kod_pocztowy = data.get('10', data.get('J', ''))  # Kolumna J
         miasto = escape_xml(data.get('9', data.get('I', '')))  # Kolumna I
         kraj = escape_xml(data.get('11', data.get('K', 'Polska')))  # Kolumna K
         
@@ -72,19 +72,19 @@ def create_xml(data):
         waluta = data.get('16', data.get('P', 'PLN'))  # Kolumna P
         forma_platnosci_raw = data.get('17', data.get('Q', ''))  # Kolumna Q
         
-       # Mapowanie form płatności na te dostępne w Optima
-forma_mapping = {
-    'przelew': 'przelew',
-    'gotowka': 'gotówka',
-    'gotówka': 'gotówka', 
-    'karta': 'karta',
-    'transfer': 'przelew',
-    'bank': 'przelew',
-    'cash': 'gotówka',
-    '': 'przelew'  # domyślna
-}
-
-forma_platnosci = forma_mapping.get(str(forma_platnosci_raw).lower(), 'przelew')
+        # Mapowanie form płatności na te dostępne w Optima
+        forma_mapping = {
+            'przelew': 'przelew',
+            'gotowka': 'gotówka',
+            'gotówka': 'gotówka', 
+            'karta': 'karta',
+            'transfer': 'przelew',
+            'bank': 'przelew',
+            'cash': 'gotówka',
+            '': 'przelew'  # domyślna
+        }
+        
+        forma_platnosci = forma_mapping.get(str(forma_platnosci_raw).lower(), 'przelew')
         
         # Identyfikator księgowy - escapowanie
         numer_clean = escape_xml(numer_faktury).replace('/', '_')
@@ -268,7 +268,7 @@ def test():
             'message': 'Test conversion successful',
             'xml_content': xml_result,
             'timestamp': datetime.now().isoformat(),
-            'note': 'Obsługuje indeksy numeryczne (0,1,2) i literowe (A,B,C) - ZAKTUALIZOWANY KOD'
+            'note': 'NAPRAWIONY KOD - formy płatności działają - v2.0'
         })
         
     except Exception as e:
@@ -310,12 +310,12 @@ def convert_single():
 def home():
     return jsonify({
         'message': 'XML Converter API for Comarch Optima',
-        'version': '1.2',
+        'version': '2.0',
         'endpoints': {
             '/test': 'Test conversion with sample data',
             '/convert/single': 'Convert single row (POST)',
         },
-        'status': 'ACTIVE - KSIEG identifiers',
+        'status': 'ACTIVE - NAPRAWIONY KOD v2.0',
         'updated': '2025-06-05'
     })
 
