@@ -1,4 +1,18 @@
-from flask import Flask, request, jsonify
+# Walidacja i zabezpieczenie kwot
+        if netto <= 0:
+            netto = 1.00
+        if vat < 0:
+            vat = 0.00
+        if brutto <= 0:
+            brutto = netto + vat
+            
+        # Maksymalne kwoty dla Comarch
+        if netto > 999999.99:
+            netto = 999999.99
+        if vat > 999999.99:
+            vat = 999999.99
+        if brutto > 999999.99:
+            brutto = 999999.99from flask import Flask, request, jsonify
 from flask_cors import CORS
 import uuid
 from datetime import datetime, timedelta
@@ -38,6 +52,18 @@ def convert_excel_date(date_input):
         # If conversion fails, return current date
         return datetime.now().strftime('%Y-%m-%d')
 
+def safe_float(value, default=0.0):
+    """Safely convert value to float with fallback"""
+    try:
+        if isinstance(value, str):
+            # Remove spaces and replace comma with dot
+            value = value.strip().replace(',', '.')
+            if value == '':
+                return default
+        return float(value)
+    except (ValueError, TypeError):
+        return default
+
 def escape_xml(text):
     """Escape special characters for XML"""
     if not text:
@@ -54,52 +80,28 @@ def create_xml(data):
         id_zrodla = str(uuid.uuid4()).upper()
         platnosc_id = str(uuid.uuid4()).upper()
         
-        # Podstawowe pola z konwersją dat - MAPOWANIE INDEKSÓW
-        numer_faktury = data.get('0', data.get('A', 'BRAK'))  # Kolumna A
-        data_wystawienia = convert_excel_date(data.get('1', data.get('B', '2025-01-01')))  # Kolumna B
-        data_zakupu = convert_excel_date(data.get('2', data.get('C', data_wystawienia)))  # Kolumna C
-        data_wplywu = convert_excel_date(data.get('3', data.get('D', data_wystawienia)))  # Kolumna D
-        termin_platnosci = convert_excel_date(data.get('4', data.get('E', '2025-01-01')))  # Kolumna E
+        # Podstawowe pola z konwersją dat - BEZPIECZNE POBIERANIE
+        numer_faktury = safe_string(data.get('0', 'BRAK'))
+        data_wystawienia = convert_excel_date(data.get('1', '2025-01-01'))
+        data_zakupu = convert_excel_date(data.get('2', data.get('1', '2025-01-01')))
+        data_wplywu = convert_excel_date(data.get('3', data.get('1', '2025-01-01')))
+        termin_platnosci = convert_excel_date(data.get('4', '2025-01-01'))
         
-        # Dane sprzedawcy - z escapowaniem znaków XML
-        nip_sprzedawcy = data.get('5', data.get('F', '0000000000'))  # Kolumna F
-        nazwa_sprzedawcy = escape_xml(data.get('6', data.get('G', 'BRAK')))  # Kolumna G
-        ulica = escape_xml(data.get('7', data.get('H', '')))  # Kolumna H
-        kod_pocztowy = data.get('10', data.get('J', ''))  # Kolumna J
-        miasto = escape_xml(data.get('9', data.get('I', '')))  # Kolumna I
-        kraj = escape_xml(data.get('11', data.get('K', 'Polska')))  # Kolumna K
+        # Dane sprzedawcy - CZYSZCZENIE + escapowanie
+        nip_sprzedawcy = clean_nip(data.get('5', '0000000000'))
+        nazwa_sprzedawcy = escape_xml(safe_string(data.get('6', 'BRAK')))
+        ulica = escape_xml(safe_string(data.get('7', '')))
+        kod_pocztowy = safe_string(data.get('10', ''))
+        miasto = escape_xml(safe_string(data.get('9', '')))
+        kraj = escape_xml(safe_string(data.get('11', 'Polska')))
         
-        # Kwoty - walidacja i formatowanie
-        try:
-            stawka_vat = float(data.get('12', data.get('L', 23)))  # Kolumna L
-            netto = float(data.get('13', data.get('M', 0)))  # Kolumna M
-            vat = float(data.get('14', data.get('N', 0)))  # Kolumna N
-            brutto = float(data.get('15', data.get('O', netto + vat)))  # Kolumna O
-            
-            # Walidacja kwot - muszą być dodatnie
-            if netto <= 0:
-                netto = 1.00
-            if vat < 0:
-                vat = 0.00
-            if brutto <= 0:
-                brutto = netto + vat
-                
-            # Maksymalne kwoty dla Comarch (zabezpieczenie)
-            if netto > 999999.99:
-                netto = 999999.99
-            if vat > 999999.99:
-                vat = 999999.99
-            if brutto > 999999.99:
-                brutto = 999999.99
-                
-        except (ValueError, TypeError):
-            # Domyślne bezpieczne wartości
-            stawka_vat = 23.0
-            netto = 1.00
-            vat = 0.23
-            brutto = 1.23
-        waluta = data.get('16', data.get('P', 'PLN'))  # Kolumna P
-        forma_platnosci_raw = data.get('17', data.get('Q', ''))  # Kolumna Q
+        # Kwoty - BEZPIECZNA konwersja
+        stawka_vat = safe_float(data.get('12', 23))
+        netto = safe_float(data.get('13', 1.00))
+        vat = safe_float(data.get('14', 0.23))
+        brutto = safe_float(data.get('15', netto + vat))
+        waluta = clean_currency(data.get('16', 'PLN'))
+        forma_platnosci_raw = safe_string(data.get('17', 'przelew'))
         
         # Mapowanie form płatności na te dostępne w Optima
         forma_mapping = {
@@ -276,8 +278,8 @@ def test():
             '2': '2025-05-21', 
             '3': '2025-05-21',
             '4': '2025-06-04',  # Termin płatności
-            '5': '1234567890',
-            '6': 'Test Firma Sp. z o.o.',
+            '5': 'NIP 123-456-78-90',  # Test czyszczenia NIP
+            '6': 'Test Firma "Sp. z o.o."',  # Test escapowania
             '7': 'ul. Testowa 1',
             '8': '',
             '9': 'Warszawa',
@@ -287,8 +289,8 @@ def test():
             '13': '1000.00',
             '14': '230.00', 
             '15': '1230.00',
-            '16': 'PLN',
-            '17': 'przelew'
+            '16': 'zł',  # Test konwersji waluty
+            '17': 'gotówka'  # Test formy płatności
         }
         
         xml_result = create_xml(test_data)
@@ -298,7 +300,7 @@ def test():
             'message': 'Test conversion successful',
             'xml_content': xml_result,
             'timestamp': datetime.now().isoformat(),
-            'note': 'NAPRAWIONY KOD v2.2 - obsługa dat tekstowych YYYY-MM-DD + walidacja kwot'
+            'note': 'NAPRAWIONY KOD v2.3 - czyszczenie NIP + waluta + bezpieczne dane'
         })
         
     except Exception as e:
@@ -316,7 +318,8 @@ def convert_single():
         print(f"Headers: {dict(request.headers)}")
         
         data = request.json
-        print(f"Received data: {data}")
+        print(f"Received data keys: {list(data.keys()) if data else 'NO DATA'}")
+        print(f"Received data sample: {dict(list(data.items())[:5]) if data else 'NO DATA'}")
         
         if not data:
             print("ERROR: Brak danych JSON")
@@ -325,18 +328,28 @@ def convert_single():
                 'error': 'Brak danych JSON'
             }), 400
         
-        # Logowanie kluczowych pól
-        print(f"Key fields: numer={data.get('0', 'MISSING')}, netto={data.get('13', 'MISSING')}")
+        # Logowanie kluczowych pól przed przetwarzaniem
+        print(f"Raw fields: numer='{data.get('0', 'MISSING')}', netto='{data.get('13', 'MISSING')}', nazwa='{data.get('6', 'MISSING')}'")
+        
+        # Dodatkowe zabezpieczenie - sprawdź czy wszystkie kluczowe pola istnieją
+        required_fields = ['0', '1', '5', '6', '13', '14', '15']
+        missing_fields = [field for field in required_fields if field not in data or data.get(field) is None]
+        
+        if missing_fields:
+            print(f"WARNING: Missing required fields: {missing_fields}")
+            # Nie przerywaj - użyj wartości domyślnych
         
         xml_result = create_xml(data)
         
         print("SUCCESS: XML created successfully")
+        print(f"XML length: {len(xml_result)} characters")
         
         return jsonify({
             'success': True,
             'message': 'Conversion successful',
             'xml_content': xml_result,
             'processed_fields': list(data.keys()),
+            'missing_fields': missing_fields if 'missing_fields' in locals() else [],
             'timestamp': datetime.now().isoformat()
         })
         
