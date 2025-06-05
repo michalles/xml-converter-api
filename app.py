@@ -1,12 +1,37 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 import traceback
 import html
 
 app = Flask(__name__)
 CORS(app)
+
+def convert_excel_date(excel_date):
+    """Convert Excel serial date to YYYY-MM-DD format"""
+    try:
+        # If it's already a string in correct format, return as is
+        if isinstance(excel_date, str) and len(excel_date) == 10 and '-' in excel_date:
+            return excel_date
+        
+        # Convert to float for calculation
+        excel_date = float(excel_date)
+        
+        # Excel epoch starts at 1900-01-01, but Excel incorrectly treats 1900 as leap year
+        # So we need to subtract 1 day for dates after Feb 28, 1900
+        if excel_date > 59:  # After Feb 28, 1900
+            excel_date -= 1
+            
+        # Calculate the date
+        epoch = datetime(1899, 12, 30)  # Excel's actual epoch
+        converted_date = epoch + timedelta(days=excel_date)
+        
+        return converted_date.strftime('%Y-%m-%d')
+        
+    except (ValueError, TypeError):
+        # If conversion fails, return current date
+        return datetime.now().strftime('%Y-%m-%d')
 
 def escape_xml(text):
     """Escape special characters for XML"""
@@ -24,12 +49,12 @@ def create_xml(data):
         id_zrodla = str(uuid.uuid4()).upper()
         platnosc_id = str(uuid.uuid4()).upper()
         
-        # Podstawowe pola
+        # Podstawowe pola z konwersją dat
         numer_faktury = data.get('A', 'BRAK')
-        data_wystawienia = data.get('B', '2025-01-01')
-        data_zakupu = data.get('C', data_wystawienia)
-        data_wplywu = data.get('D', data_wystawienia)
-        termin_platnosci = data.get('E', '2025-01-01')
+        data_wystawienia = convert_excel_date(data.get('B', '2025-01-01'))
+        data_zakupu = convert_excel_date(data.get('C', data_wystawienia))
+        data_wplywu = convert_excel_date(data.get('D', data_wystawienia))
+        termin_platnosci = convert_excel_date(data.get('E', '2025-01-01'))
         
         # Dane sprzedawcy - z escapowaniem znaków XML
         nazwa_sprzedawcy = escape_xml(data.get('G', 'BRAK'))
@@ -204,10 +229,10 @@ def test():
     try:
         test_data = {
             'A': 'TEST/123/2025',
-            'B': '2025-06-05',
-            'C': '2025-06-05', 
-            'D': '2025-06-05',
-            'E': '2025-06-19',
+            'B': '45807',  # Excel serial date
+            'C': '45807', 
+            'D': '45807',
+            'E': '45821',  # 14 days later
             'F': '1234567890',
             'G': 'Test Firma Sp. z o.o.',
             'H': 'ul. Testowa 1',
