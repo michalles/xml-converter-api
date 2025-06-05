@@ -135,7 +135,7 @@ def create_xml(data):
       <KATEGORIA_ID>{str(uuid.uuid4()).upper()}</KATEGORIA_ID>
       <OPIS></OPIS>
       <FORMA_PLATNOSCI></FORMA_PLATNOSCI>
-      <FORMA_PLATNOSCI_ID>{str(uuid.uuid4()).upper()}</FORMA_PLATNOSCI_ID>
+      <FORMA_PLATNOSCI_ID></FORMA_PLATNOSCI_ID>
       <DEKLARACJA_VAT7>{data_wystawienia[:7]}</DEKLARACJA_VAT7>
       <DEKLARACJA_VATUE>Nie</DEKLARACJA_VATUE>
       <WALUTA>{waluta}</WALUTA>
@@ -180,8 +180,8 @@ def create_xml(data):
         <PLATNOSC>
           <ID_ZRODLA_PLAT>{platnosc_id}</ID_ZRODLA_PLAT>
           <TERMIN_PLAT>{termin_platnosci}</TERMIN_PLAT>
-          <FORMA_PLATNOSCI_PLAT>{forma_platnosci}</FORMA_PLATNOSCI_PLAT>
-          <FORMA_PLATNOSCI_ID_PLAT>{str(uuid.uuid4()).upper()}</FORMA_PLATNOSCI_ID_PLAT>
+          <FORMA_PLATNOSCI_PLAT></FORMA_PLATNOSCI_PLAT>
+          <FORMA_PLATNOSCI_ID_PLAT></FORMA_PLATNOSCI_ID_PLAT>
           <KWOTA_PLAT>{brutto:.2f}</KWOTA_PLAT>
           <WALUTA_PLAT>{waluta}</WALUTA_PLAT>
           <KURS_WALUTY_PLAT>NBP</KURS_WALUTY_PLAT>
