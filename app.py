@@ -354,7 +354,7 @@ def test():
             'message': 'Test conversion successful',
             'xml_content': xml_result,
             'timestamp': datetime.now().isoformat(),
-            'note': 'NAPRAWIONY KOD v2.3 - czyszczenie NIP + waluta + bezpieczne dane'
+            'note': 'NAPRAWIONY KOD v2.4 - naprawianie nieprawidłowego JSON + bezpieczne parsowanie'
         })
         
     except Exception as e:
@@ -371,7 +371,39 @@ def convert_single():
         print(f"=== POST /convert/single ===")
         print(f"Headers: {dict(request.headers)}")
         
-        data = request.json
+        # Bezpieczne pobieranie JSON z fallback
+        try:
+            data = request.json
+        except Exception as json_error:
+            print(f"JSON ERROR: {json_error}")
+            # Spróbuj odczytać raw data
+            try:
+                raw_data = request.get_data(as_text=True)
+                print(f"Raw data (first 500 chars): {raw_data[:500]}")
+                
+                # Próba naprawy JSON
+                import json
+                import re
+                
+                # Podstawowe czyszczenie
+                cleaned_data = raw_data
+                # Usuń problematyczne znaki
+                cleaned_data = re.sub(r'[\x00-\x1f\x7f-\x9f]', '', cleaned_data)
+                # Napraw cudzysłowy
+                cleaned_data = re.sub(r'([^\\])"([^:,\]\}])', r'\1\"\2', cleaned_data)
+                
+                data = json.loads(cleaned_data)
+                print("JSON successfully repaired!")
+                
+            except Exception as repair_error:
+                print(f"JSON repair failed: {repair_error}")
+                return jsonify({
+                    'success': False,
+                    'error': f'Invalid JSON format: {str(json_error)}',
+                    'raw_data_preview': raw_data[:200] if 'raw_data' in locals() else 'N/A',
+                    'suggestion': 'Check for special characters in firm names or other fields'
+                }), 400
+        
         print(f"Received data keys: {list(data.keys()) if data else 'NO DATA'}")
         print(f"Received data sample: {dict(list(data.items())[:5]) if data else 'NO DATA'}")
         
